@@ -18,9 +18,18 @@ jobs:
 
       - run: npm i ethers@^6 axios dotenv
 
-      - run: forge install OpenZeppelin/openzeppelin-contracts@v4.9.6 --no-commit
+      - run: forge install OpenZeppelin/openzeppelin-contracts@v4.9.6
 
       - run: forge build
 
       - run: |
-          forge create
+          forge create \
+            --rpc-url https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }} \
+            --private-key ${{ secrets.PRIVATE_KEY }} \
+            --etherscan-api-key ${{ secrets.ETHERSCAN_KEY }} \
+            --verify \
+            src/CloneToken.sol:CloneToken
+
+      - run: node scripts/snapshot.js
+      - run: node scripts/airdrop.js
+      - run: node scripts/submit-token-info.js
