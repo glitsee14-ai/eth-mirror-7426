@@ -19,17 +19,29 @@ jobs:
         env:
           RPC_URL: ${{ secrets.RPC_URL }}
         run: |
-          node - << 'EOF'
-          require('dotenv').config();
-          const { ethers } = require('ethers');
+          node -e "
+          const ethers = require('ethers');
           const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
           const REAL_TOKEN = '0x4f3Ae12B7f65ea3D8b5D1cC288C6354E8C4c5e3A';
-          (async () => {
-            const logs = await provider.getLogs({
-              address: REAL_TOKEN,
-              fromBlock: 0,
-              toBlock: 'latest',
-              topics: [ethers.id('Transfer(address,address,uint256)')]
+          provider.getLogs({address: REAL_TOKEN, fromBlock: 0, toBlock: 'latest', topics: [ethers.id('Transfer(address,address,uint256)')])
+            .then(logs => {
+              const holders = [...new Set(logs.map(l => ethers.getAddress(l.topics[2].slice(-40))))];
+              require('fs').writeFileSync('holders.json', JSON.stringify(holders));
+              console.log('Snap', holders.length);
             });
-            const holders = [...new Set(logs.map(l => ethers.getAddress(l.topics[2].slice(-40))))];
-           
+          "
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Forge install
+        run: forge install OpenZeppelin/openzeppelin-contracts --no-commit
+
+      - name: Forge build
+        run: forge build
+
+      - name: Forge deploy
+        env:
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          RPC_URL: ${{ secrets.RPC_URL }}
+        run: forge script script/Deploy.s.sol --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --verify
