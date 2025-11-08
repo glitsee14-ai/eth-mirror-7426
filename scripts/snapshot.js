@@ -1,15 +1,8 @@
 require('dotenv').config();
 const { ethers } = require('ethers');
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-const real = '0xHqVZaYJnEcmKQKRf4K5N8eEuBjkTgpRzVfF7AYBFpump'; // checksum it
-(async () => {
-  const logs = await provider.getLogs({
-    fromBlock: 0,
-    toBlock: 'latest',
-    address: real,
-    topics: [ethers.id('Transfer(address,address,uint256)')]
-  });
-  const holders = [...new Set(logs.map(l => '0x' + l.topics[2].slice(26)))];
-  require('fs').writeFileSync('holders.json', JSON.stringify(holders));
-  console.log('Snap', holders.length);
-})();
+
+// real PUMP-fun token on ETH mainnet (example – change if different)
+const REAL_TOKEN = '0x4f3Ae12B7f65ea3D8b5D1cC288C6354E8C4c5e3A'; // <— put the checksummed address here
+
+(async () =>
