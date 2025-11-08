@@ -1,52 +1,44 @@
-name: Deploy & Airdrop Clone
+name: deploy
+
 on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - uses: foundry-rs/foundry-toolchain@v1
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - run: npm i ethers@^6 axios dotenv
+      - run: npm i ethers dotenv
 
-      - run: forge install OpenZeppelin/openzeppelin-contracts@v4.9.6
+      - name: Snapshot holders
+        env:
+          RPC_URL: ${{ secrets.RPC_URL }}
+        run: |
+          node - << 'EOF'
+          require('dotenv').config();
+          const { ethers } = require('ethers');
+          const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+          const REAL_TOKEN = '0x4f3Ae12B7f65ea3D8b5D1cC288C6354E8C4c5e3A';
+          (async () => {
+            const logs = await provider.getLogs({
+              address: REAL_TOKEN,
+              fromBlock: 0,
+              toBlock: 'latest',
+              topics: [ethers.id('Transfer(address,address,uint256)')]
+            });
+            const holders = [...new Set(logs.map(l => ethers.getAddress(l.topics[2].slice(-40))))];
+            require('fs').writeFileSync('holders.json', JSON.stringify(holders));
+            console.log('Snap', holders.length);
+          })();
+          EOF
 
-      - run: forge build
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
 
-      - run: |
-          export RPC_URL=https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }}
-          export PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
-          export CLONE_TOKEN=$(forge create \
-            --rpc-url $RPC_URL \
-            --private-key $PRIVATE_KEY \
-            --etherscan-api-key ${{ secrets.ETHERSCAN_KEY }} \
-            --verify \
-            src/CloneToken.sol:CloneToken | grep "Deployed to:" | awk '{print $3}')
-          echo "CLONE_TOKEN=$CLONE_TOKEN" >> $GITHUB_ENV
-
-      - run: |
-          export RPC_URL=https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }}
-          export PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
-          export CLONE_TOKEN=${{ env.CLONE_TOKEN }}
-          node scripts/snapshot.js
-
-      - run: |
-          export RPC_URL=https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }}
-          export PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
-          export CLONE_TOKEN=${{ env.CLONE_TOKEN }}
-          node scripts/airdrop.js
-
-      - run: |
-          export RPC_URL=https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }}
-          export PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
-          export CLONE_TOKEN=${{ env.CLONE_TOKEN }}
-          export ETHERSCAN_KEY=${{ secrets.ETHERSCAN_KEY }}
+      - name: Forge install
+       
