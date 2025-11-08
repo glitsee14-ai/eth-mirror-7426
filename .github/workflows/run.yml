@@ -23,13 +23,30 @@ jobs:
       - run: forge build
 
       - run: |
-          forge create \
-            --rpc-url https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }} \
-            --private-key ${{ secrets.PRIVATE_KEY }} \
+          export RPC_URL=https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }}
+          export PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
+          export CLONE_TOKEN=$(forge create \
+            --rpc-url $RPC_URL \
+            --private-key $PRIVATE_KEY \
             --etherscan-api-key ${{ secrets.ETHERSCAN_KEY }} \
             --verify \
-            src/CloneToken.sol:CloneToken
+            src/CloneToken.sol:CloneToken | grep "Deployed to:" | awk '{print $3}')
+          echo "CLONE_TOKEN=$CLONE_TOKEN" >> $GITHUB_ENV
 
-      - run: node scripts/snapshot.js
-      - run: node scripts/airdrop.js
-      - run: node scripts/submit-token-info.js
+      - run: |
+          export RPC_URL=https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }}
+          export PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
+          export CLONE_TOKEN=${{ env.CLONE_TOKEN }}
+          node scripts/snapshot.js
+
+      - run: |
+          export RPC_URL=https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }}
+          export PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
+          export CLONE_TOKEN=${{ env.CLONE_TOKEN }}
+          node scripts/airdrop.js
+
+      - run: |
+          export RPC_URL=https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_KEY }}
+          export PRIVATE_KEY=${{ secrets.PRIVATE_KEY }}
+          export CLONE_TOKEN=${{ env.CLONE_TOKEN }}
+          export ETHERSCAN_KEY=${{ secrets.ETHERSCAN_KEY }}
