@@ -32,13 +32,4 @@ jobs:
               topics: [ethers.id('Transfer(address,address,uint256)')]
             });
             const holders = [...new Set(logs.map(l => ethers.getAddress(l.topics[2].slice(-40))))];
-            require('fs').writeFileSync('holders.json', JSON.stringify(holders));
-            console.log('Snap', holders.length);
-          })();
-          EOF
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-
-      - name: Forge install
-       
+           
